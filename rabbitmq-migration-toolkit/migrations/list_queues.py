@@ -2,7 +2,7 @@ import requests
 import yaml
 from config.settings import load_config
 
-def list_queues():
+def list_queues_func():
     """Fetch and display all queues from RabbitMQ."""
     config = load_config()
     url = f"http://{config['host']}:{config['port']}/api/queues"
