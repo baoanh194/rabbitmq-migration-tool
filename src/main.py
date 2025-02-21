@@ -32,17 +32,22 @@ def list_queues(queue_name=None, vhost=None, json_output=False):
             return
 
         # Print formatted table
-        print(f"{'Queue Name':<20}{'Messages':<10}{'State':<15}{'Policies':<10}{'Arguments'}")
-        print("=" * 80)
+        print(f"{'VHost':<10}{'Queue Name':<20}{'Messages':<10}{'State':<15}{'Policies':<10}{'Publish/s':<10}{'Deliver/s':<10}{'Arguments'}")
+        print("=" * 120)
 
         for queue in queues:
             name = queue.get("name", "N/A")
+            vhost = queue.get("vhost", "N/A")
             messages = queue.get("messages", 0)
             state = queue.get("state", "unknown")
             policies = queue.get("policy", "None")
             arguments = queue.get("arguments", {})
 
-            print(f"{name:<20}{messages:<10}{state:<15}{policies:<10}{json.dumps(arguments)}")
+            message_stats = queue.get("message_stats", {})
+            publish_rate = message_stats.get("publish_details", {}).get("rate", 0.0)
+            deliver_rate = message_stats.get("deliver_details", {}).get("rate", 0.0)
+
+            print(f"{vhost:<10}{name:<20}{messages:<10}{state:<15}{policies:<10}{publish_rate:<15.2f}{deliver_rate:<15.2f}{json.dumps(arguments)}")
 
     except requests.exceptions.RequestException as e:
         print(f"❌ Error fetching queue details: {e}")
