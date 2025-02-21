@@ -20,9 +20,13 @@ fsdffdsfsdfds     0           running     None        {}
 ```
 
 Options:
+
 ```--name <queue_name>```: Filter queues by name.
+
 ```--vhost <vhost_name>```: Filter queues by vhost. Use url encoding for vhost names (e.g., ```%2f``` for ```/```).
+
 ```--json```: Output queue details in JSON format.
+
 Example Usage:
 
 Filtering by Queue Name:
