@@ -2,20 +2,17 @@ import requests
 import json
 import os
 
-# Load environment variables
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "http://localhost:15672")
 RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
 
 def analyze_queue(queue):
-    """Analyze queue properties and determine migration feasibility."""
     name = queue.get("name", "N/A")
     durable = queue.get("durable", False)
     exclusive = queue.get("exclusive", False)
     auto_delete = queue.get("auto_delete", False)
-    arguments = queue.get("arguments", {})
+    # arguments = queue.get("arguments", {})
 
-    # Check migration feasibility
     migration_issues = []
 
     if not durable:
@@ -27,9 +24,8 @@ def analyze_queue(queue):
     if auto_delete:
         migration_issues.append("Auto-delete queues are not supported in QQ/Streams.")
 
-    # Check arguments
-    if "x-message-ttl" in arguments:
-        migration_issues.append("Message TTL requires review before migration.")
+    # if "x-message-ttl" in arguments:
+    #     migration_issues.append("Message TTL requires review before migration.")
 
     # if "x-dead-letter-exchange" in arguments:
     #     migration_issues.append("Check dead-letter exchange bindings.")
@@ -41,7 +37,6 @@ def analyze_queue(queue):
     }
 
 def analyze_migration():
-    """Fetch queues and analyze migration feasibility."""
     url = f"{RABBITMQ_HOST}/api/queues"
 
     try:
