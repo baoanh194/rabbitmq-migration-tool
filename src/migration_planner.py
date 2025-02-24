@@ -9,10 +9,7 @@
 import requests
 import json
 import os
-
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "http://localhost:15672")
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
+from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
 
 def analyze_queue(queue):
     name = queue.get("name", "N/A")
