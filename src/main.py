@@ -3,13 +3,11 @@ import json
 import os
 import argparse
 
-# Load environment variables (RabbitMQ credentials)
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "http://localhost:15672")
 RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
 
 def list_queues(queue_name=None, vhost=None, json_output=False):
-    """Fetch and display RabbitMQ queue details with filtering."""
     url = f"{RABBITMQ_HOST}/api/queues"
     if vhost:
         url = f"{RABBITMQ_HOST}/api/queues/{vhost}"
@@ -20,10 +18,9 @@ def list_queues(queue_name=None, vhost=None, json_output=False):
 
         queues = response.json()
         if not queues:
-            print("🔹 No queues found.")
+            print("No queues found.")
             return
 
-        # Apply name filter
         if queue_name:
             queues = [q for q in queues if queue_name in q.get("name", "")]
 
