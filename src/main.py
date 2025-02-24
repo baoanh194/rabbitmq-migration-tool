@@ -1,3 +1,11 @@
+#=============================================================================
+# Copyright (c) 2025, Seventh State
+#=============================================================================
+# This is the main CLI entry point for listing queues. It fetches queues from
+# the RabbitMQ API (optionally filtered by vhost or queue name) and displays the
+# results either as a formatted table or as JSON. It uses command-line arguments
+# to control output and filtering.
+
 import requests
 import json
 import os

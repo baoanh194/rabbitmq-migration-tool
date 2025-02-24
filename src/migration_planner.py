@@ -1,3 +1,11 @@
+#=============================================================================
+# Copyright (c) 2025, Seventh State
+#=============================================================================
+# Fetches all queues from the RabbitMQ management API, checks each queue’s
+# properties (such as durability, exclusivity, and auto-delete), and reports if
+# a queue is fit for migration. It prints a summary table to the console and
+# saves the analysis as a JSON report in migration_report.json.
+
 import requests
 import json
 import os
