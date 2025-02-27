@@ -8,7 +8,6 @@
 
 import requests
 import json
-import os
 import argparse
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
 
@@ -34,7 +33,7 @@ def list_queues(queue_name=None, vhost=None, json_output=False):
             return
 
         # Print formatted table
-        print(f"{'VHost':<10}{'Queue Name':<20}{'Messages':<10}{'State':<15}{'Policies':<10}{'Publish/s':<10}{'Deliver/s':<10}{'Arguments'}")
+        print(f"{'VHost':<20}{'Queue Name':<20}{'Messages':<10}{'State':<15}{'Policies':<10}{'Publish/s':<15}{'Deliver/s':<15}{'Arguments':<10}")
         print("=" * 120)
 
         for queue in queues:
@@ -49,7 +48,7 @@ def list_queues(queue_name=None, vhost=None, json_output=False):
             publish_rate = message_stats.get("publish_details", {}).get("rate", 0.0)
             deliver_rate = message_stats.get("deliver_details", {}).get("rate", 0.0)
 
-            print(f"{vhost:<10}{name:<20}{messages:<10}{state:<15}{policies:<10}{publish_rate:<15.2f}{deliver_rate:<15.2f}{json.dumps(arguments)}")
+            print(f"{vhost:<20}{name:<20}{messages:<10}{state:<15}{policies:<10}{publish_rate:<15.2f}{deliver_rate:<15.2f}{json.dumps(arguments):<10}")
 
     except requests.exceptions.RequestException as e:
         print(f"❌ Error fetching queue details: {e}")

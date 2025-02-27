@@ -8,7 +8,6 @@
 
 import requests
 import json
-import os
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
 
 def analyze_queue(queue):
