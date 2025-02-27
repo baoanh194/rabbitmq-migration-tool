@@ -1,15 +1,13 @@
-#=============================================================================
-# Copyright (c) 2025, Seventh State
-#=============================================================================
-# Handles the creation of a new (migrated) queue. It first retrieves the original
-# queue’s settings from the RabbitMQ API and then adjusts its configuration to
-# meet the requirements of the target queue type (either “quorum” or “stream”).
-# It removes settings that aren’t supported by the new type and adds defaults as
-# needed. Finally, it makes an API call to create the new queue with the updated
-# settings.
-
+-#=============================================================================
+-# Copyright (c) 2025, Seventh State
+-#=============================================================================
+-# Handles the creation of a new (migrated) queue. It first retrieves the original
+-# queue’s settings from the RabbitMQ API and then adjusts its configuration to
+-# meet the requirements of the target queue type (either “quorum” or “stream”).
+-# It removes settings that aren’t supported by the new type and adds defaults as
+-# needed. Finally, it makes an API call to create the new queue with the updated
+-# settings.
 import requests
-import os
 import argparse
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
 
@@ -77,8 +75,8 @@ def create_queue(vhost, queue_name, queue_type, original_settings):
     else:
         print(f"❌ Failed to create {queue_type.capitalize()} '{queue_name}': {response.text}")
 
-def migrate_queue(vhost, queue_name, target_type):
-    """Migrate a queue by uplifting settings and creating a new queue."""
+def migrate_queue(vhost, queue_name, target_type, custom_name=None):
+    """Migrate a queue by uplifting settings and creating a new queue with a renamed name."""
     print(f"Migrating '{queue_name}' to {target_type}...")
 
     original_settings = get_queue_settings(vhost, queue_name)
@@ -86,14 +84,23 @@ def migrate_queue(vhost, queue_name, target_type):
         print(f"❌ Failed to fetch settings for queue '{queue_name}'. Skipping migration.")
         return
 
-    create_queue(vhost, f"{queue_name}_migrated", target_type, original_settings)
+    # Determine the new queue name
+    if custom_name:
+        new_queue_name = custom_name
+    else:
+        new_queue_name = f"{queue_name}_qq_migrated" if target_type == "quorum" else f"{queue_name}_stream_migrated"
+
+    print(f"🔄 Creating new queue: '{new_queue_name}'")
+
+    create_queue(vhost, new_queue_name, target_type, original_settings)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="RabbitMQ Queue Migration Tool")
     parser.add_argument("--vhost", required=True, help="Specify the vHost of the queue")
     parser.add_argument("--queue", required=True, help="Specify the name of the queue to migrate")
     parser.add_argument("--type", required=True, choices=["quorum", "stream"], help="Specify the target queue type")
+    parser.add_argument("--custom-name", help="Specify a custom name for the new queue")
 
     args = parser.parse_args()
 
-    migrate_queue(args.vhost, args.queue, args.type)
+    migrate_queue(args.vhost, args.queue, args.type, args.custom_name)
