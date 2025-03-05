@@ -10,67 +10,156 @@ import requests
 import json
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
 
-def analyze_queue(queue):
-    name = queue.get("name", "N/A")
-    durable = queue.get("durable", False)
-    exclusive = queue.get("exclusive", False)
-    auto_delete = queue.get("auto_delete", False)
-    # arguments = queue.get("arguments", {})
-
-    migration_issues = []
-
-    if not durable:
-        migration_issues.append("Queue is not durable (QQ/Streams require durable queues).")
-
-    if exclusive:
-        migration_issues.append("Exclusive queues cannot be migrated.")
-
-    if auto_delete:
-        migration_issues.append("Auto-delete queues are not supported in QQ/Streams.")
-
-    # if "x-message-ttl" in arguments:
-    #     migration_issues.append("Message TTL requires review before migration.")
-
-    # if "x-dead-letter-exchange" in arguments:
-    #     migration_issues.append("Check dead-letter exchange bindings.")
-
-    return {
-        "name": name,
-        "migration_possible": len(migration_issues) == 0,
-        "issues": migration_issues
+# Supported settings per queue type
+SUPPORTED_SETTINGS = {
+    "quorum": {
+        "durable": True,
+        "supported": [
+            "x-expires", "x-max-length", "x-message-ttl", "x-dead-letter-exchange",
+            "x-dead-letter-routing-key", "x-max-length-bytes", "delivery-limit",
+            "queue-initial-cluster-size", "dead-letter-strategy", "leader-locator"
+        ],
+        "unsupported": ["exclusive", "auto-delete", "x-max-priority", "master-locator", "version"]
+    },
+    "stream": {
+        "durable": True,
+        "supported": ["x-max-length-bytes", "queue-initial-cluster-size", "leader-locator", "max-time-retention"],
+        "unsupported": [
+            "exclusive", "auto-delete", "x-max-priority", "x-message-ttl", "x-dead-letter-exchange",
+            "x-dead-letter-routing-key", "x-max-length", "x-single-active-consumer", "overflow_behavior"
+        ]
     }
+}
 
-def analyze_migration():
-    url = f"{RABBITMQ_HOST}/api/queues"
+def get_queue_settings(vhost, queue_name):
+    """Fetch queue settings from RabbitMQ API."""
+    url = f"{RABBITMQ_HOST}/api/queues/{vhost}/{queue_name}"
 
     try:
         response = requests.get(url, auth=(RABBITMQ_USER, RABBITMQ_PASS))
         response.raise_for_status()
-        queues = response.json()
+        queue_data = response.json()
 
-        if not queues:
-            print("🔹 No queues found.")
-            return
-
-        results = [analyze_queue(q) for q in queues]
-
-        print(f"\n{'Queue Name':<20}{'Migration Feasible':<20}{'Issues'}")
-        print("=" * 80)
-
-        for result in results:
-            name = result["name"]
-            feasible = "✅ Yes" if result["migration_possible"] else "❌ No"
-            issues = "; ".join(result["issues"]) if result["issues"] else "None"
-            print(f"{name:<20}{feasible:<20}{issues}")
-
-        # Output as JSON (optional)
-        with open("migration_report.json", "w") as f:
-            json.dump(results, f, indent=2)
-
-        print("\n📄 Migration feasibility report saved to `migration_report.json`.")
+        return {
+            "queue_name": queue_name,
+            "vhost": vhost,
+            "type": queue_data.get("type", "classic"),  # Can be "classic", "quorum", or "stream"
+            "durable": queue_data.get("durable", True),
+            "exclusive": queue_data.get("exclusive", False),
+            "auto_delete": queue_data.get("auto_delete", False),
+            "arguments": queue_data.get("arguments", {})
+        }
 
     except requests.exceptions.RequestException as e:
-        print(f"❌ Error fetching queue details: {e}")
+        print(f"Error fetching queue settings: {e}")
+        return None
+
+def detect_migration_blockers(queue_info, target_type):
+    """Identify migration blockers & warnings based on queue settings."""
+    blockers = []
+    warnings = []
+
+    settings = SUPPORTED_SETTINGS[target_type]
+
+    # Check durability
+    if not queue_info["durable"] and settings["durable"]:
+        blockers.append("Non-durable queues cannot be migrated to quorum or stream.")
+
+    # Check if queue is exclusive or auto-delete
+    if queue_info["exclusive"]:
+        blockers.append("Exclusive queues are not supported in quorum or stream.")
+    if queue_info["auto_delete"]:
+        blockers.append("Auto-delete queues cannot be migrated to quorum or stream.")
+
+    # Compare arguments
+    for key in queue_info["arguments"]:
+        if key in settings["unsupported"]:
+            warnings.append(f"Setting '{key}' will be lost after migration.")
+
+    return blockers, warnings
+
+def suggest_migration_types(queue_info):
+    """Suggest all possible migration types (Quorum and/or Stream)."""
+    if queue_info["type"] in ["quorum", "stream"]:
+        return ["stream"] if queue_info["type"] == "quorum" else ["quorum"]
+
+    args = queue_info["arguments"]
+    possible_migrations = []
+
+    if any(key in args for key in ["x-dead-letter-exchange", "x-message-ttl", "x-max-length"]):
+        possible_migrations.append("quorum")
+
+    if any(key in args for key in ["x-max-length-bytes", "queue-initial-cluster-size", "leader-locator"]):
+        possible_migrations.append("stream")
+
+    if not possible_migrations:
+        possible_migrations = ["quorum", "stream"]
+
+    return possible_migrations
+
+def generate_migration_plan(vhost, queue_name):
+    """Generate a migration plan for a queue."""
+    queue_info = get_queue_settings(vhost, queue_name)
+    if not queue_info:
+        return None
+
+    suggested_types = suggest_migration_types(queue_info)
+    blockers_quorum, warnings_quorum = detect_migration_blockers(queue_info, "quorum")
+    blockers_stream, warnings_stream = detect_migration_blockers(queue_info, "stream")
+
+    migration_plan = {
+        "queue_name": queue_name,
+        "vhost": vhost,
+        "current_type": queue_info["type"],
+        "suggested_migrations": suggested_types,
+        "blockers": {
+            "quorum": blockers_quorum,
+            "stream": blockers_stream
+        },
+        "warnings": {
+            "quorum": warnings_quorum,
+            "stream": warnings_stream
+        },
+        "original_settings": queue_info
+    }
+
+    return migration_plan
+
+def main():
+    vhost = input("Enter vHost (default: '%2f'): ") or "%2f"
+    queue_name = input("Enter queue name: ")
+
+    migration_plan = generate_migration_plan(vhost, queue_name)
+    if not migration_plan:
+        print("Failed to generate migration plan.")
+        return
+
+    print("\n**Migration Analysis Result**:")
+    print(f"Queue Name: {migration_plan['queue_name']}")
+    print(f"Current Type: {migration_plan['current_type']}")
+
+    has_blockers = any(migration_plan["blockers"][mt] for mt in migration_plan["blockers"])
+
+    if not has_blockers:
+        good_migrations = [mt.capitalize() for mt in migration_plan["suggested_migrations"]]
+        if good_migrations:
+            print(f"\n**Good for Migration** → {', '.join(good_migrations)} Queue(s)")
+
+    if has_blockers:
+        print("\n**Bad for Migration** (Blockers detected):")
+        for migration_type, reasons in migration_plan["blockers"].items():
+            if reasons:
+                print(f"   - {migration_type.capitalize()}: {', '.join(reasons)}")
+
+    for migration_type, warnings in migration_plan["warnings"].items():
+        if warnings:
+            print(f"\n⚠️ **Warnings for {migration_type.capitalize()} Migration**:")
+            for warning in warnings:
+                print(f"   - {warning}")
+
+    print("\n**Full Migration Plan (JSON Output):**")
+    print(json.dumps(migration_plan, indent=4))
+
 
 if __name__ == "__main__":
-    analyze_migration()
+    main()
