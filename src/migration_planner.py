@@ -125,40 +125,76 @@ def generate_migration_plan(vhost, queue_name):
 
     return migration_plan
 
+# Fetch all queues from RabbitMQ API for a given vHost
+def get_all_queues(vhost):
+    url = f"{RABBITMQ_HOST}/api/queues/{vhost}"
+
+    try:
+        response = requests.get(url, auth=(RABBITMQ_USER, RABBITMQ_PASS))
+        response.raise_for_status()
+        return response.json()
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching queues: {e}")
+        return []
+
+# Analyze all queues in a vHost and generate a full migration report.
+def analyze_all_queues(vhost):
+    queues = get_all_queues(vhost)
+    migration_results = []
+
+    for queue in queues:
+        queue_name = queue["name"]
+        print(f"Analyzing queue: {queue_name}...")
+
+        migration_plan = generate_migration_plan(vhost, queue_name)
+        if migration_plan:
+            migration_results.append(migration_plan)
+
+    return migration_results
+
 def main():
     vhost = input("Enter vHost (default: '%2f'): ") or "%2f"
-    queue_name = input("Enter queue name: ")
+    process_all = input("Analyze all queues? (y/N): ").strip().lower() == 'y'
 
-    migration_plan = generate_migration_plan(vhost, queue_name)
-    if not migration_plan:
-        print("Failed to generate migration plan.")
-        return
+    if process_all:
+        results = analyze_all_queues(vhost)
+        with open("migration_report.json", "w") as f:
+            json.dump(results, f, indent=4)
 
-    print("\n**Migration Analysis Result**:")
-    print(f"Queue Name: {migration_plan['queue_name']}")
-    print(f"Current Type: {migration_plan['current_type']}")
+        print(f"\n✅ Migration report saved: migration_report.json")
+    else:
+        queue_name = input("Enter queue name: ")
+        migration_plan = generate_migration_plan(vhost, queue_name)
+        if not migration_plan:
+            print("Failed to generate migration plan.")
+            return
 
-    has_blockers = any(migration_plan["blockers"][mt] for mt in migration_plan["blockers"])
+        print("\n**Migration Analysis Result**:")
+        print(f"Queue Name: {migration_plan['queue_name']}")
+        print(f"Current Type: {migration_plan['current_type']}")
 
-    if not has_blockers:
-        good_migrations = [mt.capitalize() for mt in migration_plan["suggested_migrations"]]
-        if good_migrations:
-            print(f"\n**Good for Migration** → {', '.join(good_migrations)} Queue(s)")
+        has_blockers = any(migration_plan["blockers"][mt] for mt in migration_plan["blockers"])
 
-    if has_blockers:
-        print("\n**Bad for Migration** (Blockers detected):")
-        for migration_type, reasons in migration_plan["blockers"].items():
-            if reasons:
-                print(f"   - {migration_type.capitalize()}: {', '.join(reasons)}")
+        if not has_blockers:
+            good_migrations = [mt.capitalize() for mt in migration_plan["suggested_migrations"]]
+            if good_migrations:
+                print(f"\n**Good for Migration** → {', '.join(good_migrations)} Queue(s)")
 
-    for migration_type, warnings in migration_plan["warnings"].items():
-        if warnings:
-            print(f"\n⚠️ **Warnings for {migration_type.capitalize()} Migration**:")
-            for warning in warnings:
-                print(f"   - {warning}")
+        if has_blockers:
+            print("\n**Bad for Migration** (Blockers detected):")
+            for migration_type, reasons in migration_plan["blockers"].items():
+                if reasons:
+                    print(f"   - {migration_type.capitalize()}: {', '.join(reasons)}")
 
-    print("\n**Full Migration Plan (JSON Output):**")
-    print(json.dumps(migration_plan, indent=4))
+        for migration_type, warnings in migration_plan["warnings"].items():
+            if warnings:
+                print(f"\n⚠️ **Warnings for {migration_type.capitalize()} Migration**:")
+                for warning in warnings:
+                    print(f"   - {warning}")
+
+        print("\n**Full Migration Plan (JSON Output):**")
+        print(json.dumps(migration_plan, indent=4))
 
 
 if __name__ == "__main__":
