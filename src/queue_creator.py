@@ -1,3 +1,14 @@
+#!/usr/bin/env python3
+#=============================================================================
+# Copyright (c) 2025, Seventh State
+#=============================================================================
+# Handles the creation of a new (migrated) queue. It first retrieves the original
+# queue’s settings from the RabbitMQ API and then adjusts its configuration to
+# meet the requirements of the target queue type (either “quorum” or “stream”).
+# It removes settings that aren’t supported by the new type and adds defaults as
+# needed. Finally, it makes an API call to create the new queue with the updated
+# settings.
+
 import requests
 import argparse
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
