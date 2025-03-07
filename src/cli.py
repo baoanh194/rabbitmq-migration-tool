@@ -2,10 +2,7 @@
 #=============================================================================
 # Copyright (c) 2025, Seventh State
 #=============================================================================
-# This is the main CLI entry point for listing queues. It fetches queues from
-# the RabbitMQ API (optionally filtered by vhost or queue name) and displays the
-# results either as a formatted table or as JSON. It uses command-line arguments
-# to control output and filtering.
+# CLI tool for managing RabbitMQ queues.
 
 import requests
 import json
@@ -33,7 +30,6 @@ def list_queues(queue_name=None, vhost=None, json_output=False):
             print(json.dumps(queues, indent=2))
             return
 
-        # Print formatted table
         print(f"{'VHost':<20}{'Queue Name':<20}{'Messages':<10}{'State':<15}{'Policies':<10}{'Publish/s':<15}{'Deliver/s':<15}{'Arguments':<10}")
         print("=" * 120)
 
@@ -54,11 +50,18 @@ def list_queues(queue_name=None, vhost=None, json_output=False):
     except requests.exceptions.RequestException as e:
         print(f"❌ Error fetching queue details: {e}")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="List RabbitMQ Queues")
-    parser.add_argument("--name", help="Filter queues by name")
-    parser.add_argument("--vhost", help="Filter queues by vhost")
-    parser.add_argument("--json", action="store_true", help="Output in JSON format")
+def main():
+    parser = argparse.ArgumentParser(prog="migrationtool", description="Migration Tool CLI for RabbitMQ")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    list_parser = subparsers.add_parser("list_queues", help="List RabbitMQ queues")
+    list_parser.add_argument("--name", help="Filter queues by name")
+    list_parser.add_argument("--vhost", help="Filter queues by vhost")
+    list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    list_parser.set_defaults(func=lambda args: list_queues(queue_name=args.name, vhost=args.vhost, json_output=args.json))
 
     args = parser.parse_args()
-    list_queues(queue_name=args.name, vhost=args.vhost, json_output=args.json)
+    args.func(args)
+
+if __name__ == "__main__":
+    main()
