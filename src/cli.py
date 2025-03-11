@@ -8,6 +8,10 @@ import requests
 import json
 import argparse
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
+from .migration_planner import main as migration_planner_main
+import sys
+import subprocess
+print("Raw Arguments:", sys.argv)
 
 def list_queues(queue_name=None, vhost=None, json_output=False):
     url = f"{RABBITMQ_HOST}/api/queues"
@@ -45,14 +49,29 @@ def list_queues(queue_name=None, vhost=None, json_output=False):
             publish_rate = message_stats.get("publish_details", {}).get("rate", 0.0)
             deliver_rate = message_stats.get("deliver_details", {}).get("rate", 0.0)
 
-            print(f"{vhost:<20}{name:<20}{messages:<10}{state:<15}{policies:<10}{publish_rate:<15.2f}{deliver_rate:<15.2f}{json.dumps(arguments):<10}")
+            print(f"{vhost:<20}{name:<20}{messages:<10}{state:<15}{policies:<10}{publish_rate:<15.2f}{deliver_rate:<15.2f} {json.dumps(arguments)}")
+
 
     except requests.exceptions.RequestException as e:
         print(f"❌ Error fetching queue details: {e}")
 
+def run_migration_planner(args):
+    """Runs migration_planner.py as a subprocess."""
+    command = ["python3", "src/migration_planner.py"]
+    if args.vhost:
+        command.extend(["--vhost", args.vhost])
+    if args.queue:
+        command.extend(["--queue", args.queue])
+    if args.all:
+        command.append("--all")
+    if args.json:
+        command.append("--json")
+
+    subprocess.run(command)
+
 def main():
-    parser = argparse.ArgumentParser(prog="migrationtool", description="Migration Tool CLI for RabbitMQ")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(description="CLI for various RabbitMQ migration tasks")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     list_parser = subparsers.add_parser("list_queues", help="List RabbitMQ queues")
     list_parser.add_argument("--name", help="Filter queues by name")
@@ -60,8 +79,22 @@ def main():
     list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
     list_parser.set_defaults(func=lambda args: list_queues(queue_name=args.name, vhost=args.vhost, json_output=args.json))
 
+    planner_parser = subparsers.add_parser("planner", help="Analyze queue migration suitability")
+    planner_parser.add_argument("--name", help="Specify the queue name for migration")
+    planner_parser.add_argument("--vhost", default="%2f", help="Virtual host (default: %(default)s)")
+    planner_parser.add_argument("--queue", help="Specify a queue name to analyze")
+    planner_parser.add_argument("--all", action="store_true", help="Analyze all queues in the specified vHost")
+    planner_parser.add_argument("--json", action="store_true", help="Output results in JSON format")
+    planner_parser.set_defaults(func=lambda args: run_migration_planner(args))
+
+
+
     args = parser.parse_args()
-    args.func(args)
+
+    if args.command:
+        args.func(args)
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()
