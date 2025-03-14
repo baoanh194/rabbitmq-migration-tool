@@ -10,6 +10,7 @@ import requests
 import json
 import argparse
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
+from src.logger import log_info, log_error
 
 # Supported settings per queue type
 SUPPORTED_SETTINGS = {
@@ -40,7 +41,7 @@ def get_queue_settings(vhost, queue_name):
         response = requests.get(url, auth=(RABBITMQ_USER, RABBITMQ_PASS))
         response.raise_for_status()
         queue_data = response.json()
-
+        log_info(f"Fetched settings for queue '{queue_name}' in vhost '{vhost}'.")
         return {
             "queue_name": queue_name,
             "vhost": vhost,
@@ -52,6 +53,7 @@ def get_queue_settings(vhost, queue_name):
         }
 
     except requests.exceptions.RequestException as e:
+        log_error(f"Error fetching settings for queue '{queue_name}' in vhost '{vhost}': {e}")
         print(f"Error fetching queue settings: {e}")
         return None
 
@@ -102,6 +104,7 @@ def generate_migration_plan(vhost, queue_name):
     """Generate a migration plan for a queue."""
     queue_info = get_queue_settings(vhost, queue_name)
     if not queue_info:
+        log_error(f"Failed to generate migration plan for queue '{queue_name}' in vhost '{vhost}'.")
         return None
 
     suggested_types = suggest_migration_types(queue_info)
@@ -123,7 +126,7 @@ def generate_migration_plan(vhost, queue_name):
         },
         "original_settings": queue_info
     }
-
+    log_info(f"Generated migration plan for queue '{queue_name}': {json.dumps(migration_plan)}")
     return migration_plan
 
 # Fetch all queues from RabbitMQ API for a given vHost
@@ -173,6 +176,7 @@ def main():
         else:
             with open("migration_report.json", "w") as f:
                 json.dump(results, f, indent=4)
+            log_info(f"Saved migration report for all queues in vhost '{vhost}'.")
             print(f"\n✅ Migration report saved: migration_report.json")
     elif queue_name:
         migration_plan = generate_migration_plan(vhost, queue_name)

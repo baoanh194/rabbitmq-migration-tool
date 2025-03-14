@@ -8,7 +8,7 @@ import requests
 import json
 import argparse
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
-from .migration_planner import main as migration_planner_main
+# from migration_planner import main
 import sys
 import subprocess
 print("Raw Arguments:", sys.argv)

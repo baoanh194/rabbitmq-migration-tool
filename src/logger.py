@@ -1,9 +1,14 @@
 import logging
 
-# Configure logging
-logging.basicConfig(filename="migration.log", level=logging.INFO, format="%(asctime)s - %(message)s")
+logging.basicConfig(
+    filename="migration_log.txt",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
 
-def log_migration(queue_name, status):
-    logging.info(f"Queue: {queue_name}, Status: {status}")
+def log_info(message):
+    logging.info(message)
 
-log_migration("classic_queue", "Migrated successfully to Quorum Queue")
+def log_error(message):
+    logging.error(message)
