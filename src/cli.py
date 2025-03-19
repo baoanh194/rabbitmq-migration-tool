@@ -8,10 +8,7 @@ import requests
 import json
 import argparse
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
-# from migration_planner import main
-import sys
 import subprocess
-print("Raw Arguments:", sys.argv)
 
 def list_queues(queue_name=None, vhost=None, json_output=False):
     url = f"{RABBITMQ_HOST}/api/queues"
@@ -69,16 +66,22 @@ def run_migration_planner(args):
 
     subprocess.run(command)
 
+def run_queue_creator(args):
+    command = ["python3", "src/queue_creator.py", "--vhost", args.vhost, "--queue", args.queue, "--type", args.type]
+    subprocess.run(command)
+
 def main():
     parser = argparse.ArgumentParser(description="CLI for various RabbitMQ migration tasks")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    ## lists queues comamnds
     list_parser = subparsers.add_parser("list_queues", help="List RabbitMQ queues")
     list_parser.add_argument("--name", help="Filter queues by name")
     list_parser.add_argument("--vhost", help="Filter queues by vhost")
     list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
     list_parser.set_defaults(func=lambda args: list_queues(queue_name=args.name, vhost=args.vhost, json_output=args.json))
 
+    ## planner commands
     planner_parser = subparsers.add_parser("planner", help="Analyze queue migration suitability")
     planner_parser.add_argument("--name", help="Specify the queue name for migration")
     planner_parser.add_argument("--vhost", default="%2f", help="Virtual host (default: %(default)s)")
@@ -87,7 +90,12 @@ def main():
     planner_parser.add_argument("--json", action="store_true", help="Output results in JSON format")
     planner_parser.set_defaults(func=lambda args: run_migration_planner(args))
 
-
+    ## creator commands
+    creator_parser = subparsers.add_parser("create_queue", help="Migrate (create) a new queue using queue_creator module")
+    creator_parser.add_argument("--vhost", required=True, help="Virtual host for the queue")
+    creator_parser.add_argument("--queue", required=True, help="Name of the queue to migrate")
+    creator_parser.add_argument("--type", required=True, choices=["quorum", "stream"], help="Target queue type")
+    creator_parser.set_defaults(func=lambda args: run_queue_creator(args))
 
     args = parser.parse_args()
 
