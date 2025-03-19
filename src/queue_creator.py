@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-#=============================================================================
+# =============================================================================
 # Copyright (c) 2025, Seventh State
-#=============================================================================
+# =============================================================================
 # Handles the creation of a new (migrated) queue. It first retrieves the original
 # queue’s settings from the RabbitMQ API and then adjusts its configuration to
 # meet the requirements of the target queue type (either “quorum” or “stream”).
@@ -9,126 +9,119 @@
 # needed. Finally, it makes an API call to create the new queue with the updated
 # settings.
 
-import requests
 import argparse
+import requests
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
 
-def get_queue_settings(vhost, queue_name):
-    url = f"{RABBITMQ_HOST}/api/queues/{vhost}/{queue_name}"
+API_HEADERS = {"Content-Type": "application/json"}
+MESSAGE_BATCH_SIZE = 1000
+
+def _api_request(method, url, auth, headers=None, json=None):
+    """Handles API requests with error handling."""
     try:
-        response = requests.get(url, auth=(RABBITMQ_USER, RABBITMQ_PASS))
+        response = requests.request(method, url, auth=auth, headers=headers, json=json)
         response.raise_for_status()
-        queue_data = response.json()
-
-        arguments = queue_data.get("arguments", {})
-
-        return {
-            "durable": queue_data.get("durable", True),
-            "arguments": arguments
-        }
+        return response
     except requests.exceptions.RequestException as e:
-        print(f"❌ Error fetching queue settings: {e}")
+        print(f"❌ API Error: {e}")
         return None
 
-def create_queue(vhost, queue_name, queue_type, original_settings):
+def get_queue_settings(vhost, queue_name):
+    """Retrieves queue settings from RabbitMQ API."""
     url = f"{RABBITMQ_HOST}/api/queues/{vhost}/{queue_name}"
-    headers = {"Content-Type": "application/json"}
+    response = _api_request("GET", url, auth=(RABBITMQ_USER, RABBITMQ_PASS))
+    if response:
+        queue_data = response.json()
+        return {"durable": queue_data.get("durable", True), "arguments": queue_data.get("arguments", {})}
+    return None
 
+def create_queue(vhost, queue_name, queue_type, original_settings):
+    """Creates a new queue with specified settings."""
+    url = f"{RABBITMQ_HOST}/api/queues/{vhost}/{queue_name}"
     new_arguments = original_settings["arguments"].copy()
 
     if queue_type == "quorum":
         new_arguments["x-queue-type"] = "quorum"
-        unsupported_keys = ["exclusive", "auto-delete", "x-max-priority", "master-locator", "version"]
-        for key in unsupported_keys:
-            new_arguments.pop(key, None)
+        _remove_keys(new_arguments, ["exclusive", "auto-delete", "x-max-priority", "master-locator", "version"])
         new_arguments.setdefault("queue-initial-cluster-size", 3)
         new_arguments.setdefault("leader-locator", "client-local")
-
     elif queue_type == "stream":
         new_arguments["x-queue-type"] = "stream"
-        unsupported_keys = [
-            "x-dead-letter-exchange", "x-dead-letter-routing-key",
-            "x-single-active-consumer", "overflow_behavior", "x-message-ttl",
-            "x-max-length", "x-max-length-bytes"
-        ]
-        for key in unsupported_keys:
-            new_arguments.pop(key, None)
-
+        _remove_keys(
+            new_arguments,
+            [
+                "x-dead-letter-exchange",
+                "x-dead-letter-routing-key",
+                "x-single-active-consumer",
+                "overflow_behavior",
+                "x-message-ttl",
+                "x-max-length",
+                "x-max-length-bytes",
+            ],
+        )
         new_arguments["max-segment-size-bytes"] = 10485760  # 10 MB
         new_arguments["max-time-retention"] = 86400000  # 24 hours
-
     else:
         print(f"❌ Unsupported queue type: {queue_type}")
         return
 
-    data = {
-        "durable": original_settings["durable"],
-        "arguments": new_arguments
-    }
+    data = {"durable": original_settings["durable"], "arguments": new_arguments}
+    response = _api_request("PUT", url, auth=(RABBITMQ_USER, RABBITMQ_PASS), headers=API_HEADERS, json=data)
 
-    response = requests.put(url, auth=(RABBITMQ_USER, RABBITMQ_PASS), json=data, headers=headers)
-    if response.status_code in [201, 204]:
+    if response and response.status_code in [201, 204]:
         print(f"✅ {queue_type.capitalize()} queue '{queue_name}' created successfully.")
     else:
-        print(f"❌ Failed to create {queue_type.capitalize()} queue '{queue_name}': {response.text}")
+        print(f"❌ Failed to create {queue_type.capitalize()} queue '{queue_name}': {response.text if response else 'Unknown error'}")
+
+def _remove_keys(dictionary, keys):
+    """Removes keys from a dictionary if they exist."""
+    for key in keys:
+        dictionary.pop(key, None)
 
 def move_messages(source_vhost, source_queue, target_queue):
-    """ Move messages from source_queue to target_queue. """
+    """Moves messages from source_queue to target_queue."""
     url = f"{RABBITMQ_HOST}/api/queues/{source_vhost}/{source_queue}/get"
-    headers = {"Content-Type": "application/json"}
     get_body = {
-        "count": 1000,  # Fetch 1000 messages at a time
+        "count": MESSAGE_BATCH_SIZE,
         "requeue": False,
         "encoding": "auto",
-        "ackmode": "ack_requeue_false"
+        "ackmode": "ack_requeue_false",
     }
 
-    try:
-        response = requests.post(url, auth=(RABBITMQ_USER, RABBITMQ_PASS), json=get_body, headers=headers)
-        if response.status_code != 200:
-            print(f"❌ Error fetching messages from '{source_queue}': {response.text}")
-            return
-
+    response = _api_request("POST", url, auth=(RABBITMQ_USER, RABBITMQ_PASS), headers=API_HEADERS, json=get_body)
+    if response:
         messages = response.json()
         for message in messages:
             publish_message(target_queue, message)
-
         print(f"✅ Successfully moved {len(messages)} messages from '{source_queue}' to '{target_queue}'")
-
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Error moving messages: {e}")
+    else:
+        print(f"❌ Error fetching messages from '{source_queue}': {response.text if response else 'Unknown error'}")
 
 def publish_message(queue_name, message):
-    """ Publish message to a new queue. """
+    """Publishes a message to a queue."""
     url = f"{RABBITMQ_HOST}/api/exchanges/%2F/amq.default/publish"
-    headers = {"Content-Type": "application/json"}
     post_body = {
         "properties": message["properties"],
         "routing_key": queue_name,
         "payload": message["payload"],
-        "payload_encoding": "string"
+        "payload_encoding": "string",
     }
 
-    try:
-        response = requests.post(url, auth=(RABBITMQ_USER, RABBITMQ_PASS), json=post_body, headers=headers)
-        if response.status_code != 200:
-            print(f"❌ Error publishing message to '{queue_name}': {response.text}")
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Error publishing message: {e}")
+    response = _api_request("POST", url, auth=(RABBITMQ_USER, RABBITMQ_PASS), headers=API_HEADERS, json=post_body)
+    if not response or response.status_code != 200:
+        print(f"❌ Error publishing message to '{queue_name}': {response.text if response else 'Unknown error'}")
 
 def delete_queue(vhost, queue_name):
-    """ Delete a queue """
+    """Deletes a queue."""
     url = f"{RABBITMQ_HOST}/api/queues/{vhost}/{queue_name}"
-    try:
-        response = requests.delete(url, auth=(RABBITMQ_USER, RABBITMQ_PASS))
-        if response.status_code in [200, 204]:
-            print(f"✅ Queue '{queue_name}' deleted successfully.")
-        else:
-            print(f"❌ Error deleting queue '{queue_name}': {response.text}")
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Error deleting queue: {e}")
+    response = _api_request("DELETE", url, auth=(RABBITMQ_USER, RABBITMQ_PASS))
+    if response and response.status_code in [200, 204]:
+        print(f"✅ Queue '{queue_name}' deleted successfully.")
+    else:
+        print(f"❌ Error deleting queue '{queue_name}': {response.text if response else 'Unknown error'}")
 
 def migrate_queue(vhost, queue_name, target_type):
+    """Migrates a queue to a new type."""
     print(f"Starting migration of '{queue_name}' to {target_type}...")
 
     original_settings = get_queue_settings(vhost, queue_name)
