@@ -77,12 +77,17 @@ def detect_migration_blockers(queue_info, target_type):
     if queue_info["auto_delete"]:
         blockers.append("Auto-delete queues cannot be migrated.")
 
-    unsupported_keys = set(queue_info["arguments"].keys()) & set(settings["unsupported"])
+    arguments = queue_info["arguments"]
+
+    if arguments.get("x-queue-version") == 2 or arguments.get("x-queue-version") == 1:
+        warnings.append("Queues with 'x-queue-version' are not supported for Quorum Queues.")
+
+    # Detect unsupported settings
+    unsupported_keys = set(arguments.keys()) & set(settings["unsupported"])
     for key in unsupported_keys:
         warnings.append(f"Setting '{key}' will be lost after migration.")
 
     return blockers, warnings
-
 
 def suggest_migration_types(queue_info):
     """Suggest all possible migration types (Quorum and/or Stream)."""
