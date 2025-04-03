@@ -11,6 +11,12 @@ import json
 import argparse
 from config.config import RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS
 from src.logger import log_info, log_error
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
+session = requests.Session()
+retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+session.mount("https://", HTTPAdapter(max_retries=retry))
 
 # Supported settings per queue type
 SUPPORTED_SETTINGS = {
@@ -34,18 +40,18 @@ SUPPORTED_SETTINGS = {
 }
 
 def get_queue_settings(vhost, queue_name):
-    """Fetch queue settings from RabbitMQ API."""
+    """Fetch queue settings from RabbitMQ API with retries and timeout."""
     url = f"{RABBITMQ_HOST}/api/queues/{vhost}/{queue_name}"
 
     try:
-        response = requests.get(url, auth=(RABBITMQ_USER, RABBITMQ_PASS))
+        response = session.get(url, auth=(RABBITMQ_USER, RABBITMQ_PASS), timeout=5)
         response.raise_for_status()
         queue_data = response.json()
         log_info(f"Fetched settings for queue '{queue_name}' in vhost '{vhost}'.")
         return {
             "queue_name": queue_name,
             "vhost": vhost,
-            "type": queue_data.get("type", "classic"),  # Can be "classic", "quorum", or "stream"
+            "type": queue_data.get("type", "classic"),
             "durable": queue_data.get("durable", True),
             "exclusive": queue_data.get("exclusive", False),
             "auto_delete": queue_data.get("auto_delete", False),
@@ -54,7 +60,6 @@ def get_queue_settings(vhost, queue_name):
 
     except requests.exceptions.RequestException as e:
         log_error(f"Error fetching settings for queue '{queue_name}' in vhost '{vhost}': {e}")
-        print(f"Error fetching queue settings: {e}")
         return None
 
 def detect_migration_blockers(queue_info, target_type):
@@ -64,41 +69,37 @@ def detect_migration_blockers(queue_info, target_type):
 
     settings = SUPPORTED_SETTINGS[target_type]
 
-    # Check durability
     if not queue_info["durable"] and settings["durable"]:
-        blockers.append("Non-durable queues cannot be migrated to quorum or stream.")
+        blockers.append("Non-durable queues cannot be migrated.")
 
-    # Check if queue is exclusive or auto-delete
     if queue_info["exclusive"]:
-        blockers.append("Exclusive queues are not supported in quorum or stream.")
+        blockers.append("Exclusive queues are not supported.")
     if queue_info["auto_delete"]:
-        blockers.append("Auto-delete queues cannot be migrated to quorum or stream.")
+        blockers.append("Auto-delete queues cannot be migrated.")
 
-    # Compare arguments
-    for key in queue_info["arguments"]:
-        if key in settings["unsupported"]:
-            warnings.append(f"Setting '{key}' will be lost after migration.")
+    unsupported_keys = set(queue_info["arguments"].keys()) & set(settings["unsupported"])
+    for key in unsupported_keys:
+        warnings.append(f"Setting '{key}' will be lost after migration.")
 
     return blockers, warnings
+
 
 def suggest_migration_types(queue_info):
     """Suggest all possible migration types (Quorum and/or Stream)."""
     if queue_info["type"] in ["quorum", "stream"]:
         return ["stream"] if queue_info["type"] == "quorum" else ["quorum"]
 
-    args = queue_info["arguments"]
+    args = set(queue_info["arguments"].keys())
+    quorum_keys = {"x-dead-letter-exchange", "x-message-ttl", "x-max-length"}
+    stream_keys = {"x-max-length-bytes", "queue-initial-cluster-size", "leader-locator"}
+
     possible_migrations = []
-
-    if any(key in args for key in ["x-dead-letter-exchange", "x-message-ttl", "x-max-length"]):
+    if args & quorum_keys:
         possible_migrations.append("quorum")
-
-    if any(key in args for key in ["x-max-length-bytes", "queue-initial-cluster-size", "leader-locator"]):
+    if args & stream_keys:
         possible_migrations.append("stream")
 
-    if not possible_migrations:
-        possible_migrations = ["quorum", "stream"]
-
-    return possible_migrations
+    return possible_migrations or ["quorum", "stream"]
 
 def generate_migration_plan(vhost, queue_name):
     """Generate a migration plan for a queue."""
@@ -177,7 +178,7 @@ def main():
             with open("migration_report.json", "w") as f:
                 json.dump(results, f, indent=4)
             log_info(f"Saved migration report for all queues in vhost '{vhost}'.")
-            print(f"\n✅ Migration report saved: migration_report.json")
+            print(f"\nMigration report saved: migration_report.json")
     elif queue_name:
         migration_plan = generate_migration_plan(vhost, queue_name)
         if not migration_plan:
