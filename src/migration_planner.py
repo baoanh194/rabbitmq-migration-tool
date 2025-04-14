@@ -27,16 +27,22 @@ SUPPORTED_SETTINGS = {
             "x-dead-letter-routing-key", "x-max-length-bytes", "delivery-limit",
             "queue-initial-cluster-size", "dead-letter-strategy", "leader-locator"
         ],
-        "unsupported": ["exclusive", "auto-delete", "x-max-priority", "master-locator", "version"]
+        "unsupported": ["exclusive", "auto-delete", "x-max-priority", "x-queue-master-locator", "version", "x-queue-mode"]
     },
     "stream": {
         "durable": True,
         "supported": ["x-max-length-bytes", "queue-initial-cluster-size", "leader-locator", "max-time-retention"],
         "unsupported": [
             "exclusive", "auto-delete", "x-max-priority", "x-message-ttl", "x-dead-letter-exchange",
-            "x-dead-letter-routing-key", "x-max-length", "x-single-active-consumer", "overflow_behavior"
+            "x-dead-letter-routing-key", "x-max-length", "x-single-active-consumer", "overflow_behavior",
+            "x-queue-master-locator", "x-queue-mode"
         ]
     }
+}
+
+UNSUPPORTED_ARGUMENT_VALUES = {
+    "x-queue-mode": ["lazy"],
+    "overflow": ["reject-publish-dlx"]
 }
 
 def get_queue_settings(vhost, queue_name):
@@ -87,6 +93,11 @@ def detect_migration_blockers(queue_info, target_type):
     for key in unsupported_keys:
         warnings.append(f"Setting '{key}' will be lost after migration.")
 
+    # Detect unsupported argument values
+    for key, bad_values in UNSUPPORTED_ARGUMENT_VALUES.items():
+        if key in arguments and arguments[key] in bad_values:
+            warnings.append(f"Argument '{key}={arguments[key]}' is not compatible with Quorum Queues.")
+
     return blockers, warnings
 
 def suggest_migration_types(queue_info):
@@ -135,7 +146,6 @@ def generate_migration_plan(vhost, queue_name):
     log_info(f"Generated migration plan for queue '{queue_name}': {json.dumps(migration_plan)}")
     return migration_plan
 
-# Fetch all queues from RabbitMQ API for a given vHost
 def get_all_queues(vhost):
     url = f"{RABBITMQ_HOST}/api/queues/{vhost}"
 
@@ -148,7 +158,6 @@ def get_all_queues(vhost):
         print(f"Error fetching queues: {e}")
         return []
 
-# Analyze all queues in a vHost and generate a full migration report.
 def analyze_all_queues(vhost):
     queues = get_all_queues(vhost)
     migration_results = []
@@ -211,11 +220,11 @@ def main():
 
             for migration_type, warnings in migration_plan["warnings"].items():
                 if warnings:
-                    print(f"\n⚠️ **Warnings for {migration_type.capitalize()} Migration**:")
+                    print(f"\n**Warnings for {migration_type.capitalize()} Migration**:")
                     for warning in warnings:
                         print(f"   - {warning}")
 
-            print("\n**Full Migration Plan (JSON Output):**")
+            print("\n**Full Migration Plan (JSON Output):")
             print(json.dumps(migration_plan, indent=4))
     else:
         print("Please provide --queue or --all argument")
