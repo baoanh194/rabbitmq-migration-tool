@@ -45,7 +45,6 @@ def list_queues(args):
         print(f"Error fetching queue details: {e}")
 
 def _run_subprocess(command):
-    """Runs a subprocess safely."""
     try:
         subprocess.run(command, check=True)
     except subprocess.CalledProcessError as e:
