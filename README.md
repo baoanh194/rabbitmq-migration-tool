@@ -22,7 +22,7 @@ git clone git@github.com:baoanh194/rabbitmq-migration-tool.git
 ```
 
 ### Install required dependencies:
-TODO
+pip install -r requirements.txt
 
 ### Configure RabbitMQ credentials:
 Edit the config/config.py file as needed:
@@ -175,5 +175,32 @@ Current Type: quorum
 }
 ```
 
+### Queue Creation
+Create a new queue based on the migration plan.
+
+Options:
+```
+rabbitmq-migration create_queue --help
+usage: rabbitmq-migration create_queue [-h] --vhost VHOST --queue QUEUE --type {quorum,stream}
+  -h, --help            show this help message and exit
+  --vhost VHOST         Virtual host for the queue
+  --queue QUEUE         Name of the queue to migrate
+  --type {quorum,stream}
+                        Target queue type
+```
+
+```bash
+$rabbitmq-migration create_queue --vhost %2f --queue GiaBao --type quorum
+✅ Migration completed! Queue 'GiaBao' is now a quorum queue.
+```
+
 ## Support
 For any issues or questions, please open an issue on GitHub or contact the development team.
+
+## Notes and Limitations
+
+- Queues with unsupported features (e.g., x-max-priority, lazy mode, ha-* policies) will be flagged.
+
+- Only queues using supported arguments will be migrated. Others require manual intervention.
+
+- Federation, shovel, and mirror handling are planned in future updates.
