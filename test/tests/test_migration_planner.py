@@ -13,13 +13,7 @@ from src.migration_planner import (
     get_queue_settings,
     detect_migration_blockers,
     suggest_migration_types,
-    generate_migration_plan,
-    RABBITMQ_HOST,
-    RABBITMQ_USER,
-    RABBITMQ_PASS,
-    session,
-    log_info,
-    log_error
+    generate_migration_plan
 )
 
 # A simple fake response to simulate requests responses
