@@ -16,13 +16,12 @@ MESSAGE_BATCH_SIZE = 1000
 
 # Feature support matrix
 UNSUPPORTED_FEATURES = {
-    "quorum": [
-        "exclusive", "auto-delete", "x-max-priority", "master-locator", "version"
-    ],
+    "quorum": ["exclusive", "auto-delete", "x-max-priority", "x-queue-master-locator", "x-queue-version", "x-queue-mode"],
     "stream": [
-        "x-dead-letter-exchange", "x-message-ttl", "x-max-length", "x-max-priority",
-        "x-single-active-consumer", "overflow-behavior", "x-max-length-bytes"
-    ]
+            "exclusive", "auto-delete", "x-max-priority", "x-message-ttl", "x-dead-letter-exchange",
+            "x-dead-letter-routing-key", "x-max-length", "x-single-active-consumer", "overflow_behavior",
+            "x-queue-master-locator", "x-queue-mode"
+        ]
 }
 
 # Handles API requests with error handling.

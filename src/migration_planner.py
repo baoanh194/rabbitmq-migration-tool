@@ -27,7 +27,7 @@ SUPPORTED_SETTINGS = {
             "x-dead-letter-routing-key", "x-max-length-bytes", "delivery-limit",
             "queue-initial-cluster-size", "dead-letter-strategy", "leader-locator"
         ],
-        "unsupported": ["exclusive", "auto-delete", "x-max-priority", "x-queue-master-locator", "version", "x-queue-mode"]
+        "unsupported": ["exclusive", "auto-delete", "x-max-priority", "x-queue-master-locator", "x-queue-version", "x-queue-mode"]
     },
     "stream": {
         "durable": True,
